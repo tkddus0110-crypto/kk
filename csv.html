@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMD_NM 결측치 정제 도구</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- SheetJS (xlsx) for handling CSV/XLSX file read & write -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- PapaParse for high-performance CSV parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <div class="p-2 bg-indigo-600 text-white rounded-lg shadow-md">
+                    <i class="fa-solid fa-file-csv text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold text-slate-900">EMD_NM 결측치 데이터 정제기</h1>
+                    <p class="text-xs text-slate-500">CSV 데이터 정제 및 XLSX/CSV 내보내기</p>
+                </div>
+            </div>
+            <div class="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-full font-medium border border-indigo-100">
+                <i class="fa-solid fa-code text-xs mr-1"></i> 순수 JS & HTML
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col space-y-6">
+
+        <!-- File Upload Section -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+            <h2 class="text-lg font-semibold text-slate-800 mb-4 flex items-center">
+                <i class="fa-solid fa-cloud-arrow-up text-indigo-600 mr-2"></i> 1. CSV 파일 업로드
+            </h2>
+            
+            <div id="drop-zone" class="border-2 border-dashed border-slate-300 hover:border-indigo-500 transition-colors duration-200 rounded-xl p-8 text-center cursor-pointer bg-slate-50/50 hover:bg-indigo-50/30 flex flex-col items-center justify-center space-y-3">
+                <div class="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center text-2xl">
+                    <i class="fa-solid fa-file-circle-plus"></i>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-slate-700">CSV 파일을 여기에 드래그하거나 클릭하여 선택하세요</p>
+                    <p class="text-xs text-slate-400 mt-1">지원 형식: .csv (UTF-8 또는 EUC-KR / CP949 지원)</p>
+                </div>
+                <input type="file" id="file-input" accept=".csv" class="hidden" />
+            </div>
+
+            <!-- Encoding Select & Info Bar -->
+            <div class="mt-4 flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-slate-100 text-sm text-slate-600">
+                <div class="flex items-center space-x-2">
+                    <label for="encoding-select" class="font-medium text-slate-700">인코딩 설정:</label>
+                    <select id="encoding-select" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        <option value="UTF-8" selected>UTF-8 (기본)</option>
+                        <option value="EUC-KR">EUC-KR / CP949 (한글 엑셀용)</option>
+                    </select>
+                    <span class="text-xs text-slate-400">* 한글이 깨질 경우 인코딩을 변경 후 다시 업로드하세요.</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dashboard / Status Section (Hidden by default) -->
+        <div id="status-panel" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+            <div class="flex flex-col md:flex-row md:items-center justify-between pb-6 border-b border-slate-200 gap-4">
+                <div>
+                    <h2 class="text-lg font-semibold text-slate-800 flex items-center">
+                        <i class="fa-solid fa-filter text-indigo-600 mr-2"></i> 2. EMD_NM 결측치 정제 결과
+                    </h2>
+                    <p class="text-sm text-slate-500 mt-1" id="file-name-display">파일명: -</p>
+                </div>
+
+                <!-- Export Buttons -->
+                <div class="flex flex-wrap items-center gap-3">
+                    <button id="download-csv-btn" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-medium shadow-sm transition-all duration-150 flex items-center space-x-2 active:scale-95">
+                        <i class="fa-solid fa-file-csv"></i>
+                        <span>CSV로 저장</span>
+                    </button>
+                    <button id="download-xlsx-btn" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium shadow-sm transition-all duration-150 flex items-center space-x-2 active:scale-95">
+                        <i class="fa-solid fa-file-excel"></i>
+                        <span>XLSX로 저장</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Stats Grid -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 my-6">
+                <div class="bg-slate-50 rounded-xl p-4 border border-slate-200/80">
+                    <div class="text-xs text-slate-500 font-medium">전체 행 (Total)</div>
+                    <div class="text-2xl font-bold text-slate-800 mt-1" id="stat-total">0</div>
+                </div>
+                <div class="bg-red-50 rounded-xl p-4 border border-red-100">
+                    <div class="text-xs text-red-600 font-medium">제거된 결측치 행 (Removed)</div>
+                    <div class="text-2xl font-bold text-red-600 mt-1" id="stat-removed">0</div>
+                </div>
+                <div class="bg-emerald-50 rounded-xl p-4 border border-emerald-100">
+                    <div class="text-xs text-emerald-600 font-medium">정제된 최종 행 (Cleaned)</div>
+                    <div class="text-2xl font-bold text-emerald-700 mt-1" id="stat-cleaned">0</div>
+                </div>
+            </div>
+
+            <!-- Alert Box for EMD_NM check -->
+            <div id="column-warning" class="hidden mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-sm flex items-start space-x-2">
+                <i class="fa-solid fa-triangle-exclamation text-amber-500 text-lg mt-0.5"></i>
+                <div>
+                    <span class="font-semibold">주의:</span> 업로드한 파일에 <code class="bg-amber-100 px-1.5 py-0.5 rounded text-amber-900 font-mono text-xs">EMD_NM</code> 컬럼이 존재하지 않거나 대소문자가 다를 수 있습니다. 데이터 정제 없이 전체 데이터가 유지되었습니다.
+                </div>
+            </div>
+
+            <!-- Data Preview Section -->
+            <div class="mt-4">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-sm font-semibold text-slate-700">정제된 데이터 미리보기 (최대 100건)</h3>
+                    <span class="text-xs text-slate-400" id="preview-count">0 건 표시 중</span>
+                </div>
+                
+                <div class="overflow-x-auto border border-slate-200 rounded-xl max-h-96">
+                    <table class="w-full text-left text-xs text-slate-600 border-collapse">
+                        <thead class="bg-slate-100 text-slate-700 uppercase font-semibold sticky top-0 z-10 shadow-sm" id="table-head">
+                            <!-- JS Inject Header -->
+                        </thead>
+                        <tbody id="table-body" class="divide-y divide-slate-200 bg-white">
+                            <!-- JS Inject Rows -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-4 mt-auto">
+        <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-400">
+            EMD_NM Column Data Cleansing Utility &copy; 2026. All rights reserved.
+        </div>
+    </footer>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-5 right-5 transform translate-y-20 opacity-0 transition-all duration-300 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-lg flex items-center space-x-2 z-50 text-sm">
+        <i id="toast-icon" class="fa-solid fa-circle-check text-emerald-400"></i>
+        <span id="toast-message">메시지</span>
+    </div>
+
+    <!-- Application Logic Script -->
+    <script>
+        // State variables
+        let rawData = [];
+        let cleanedData = [];
+        let originalFileName = "";
+        let detectedHeaders = [];
+
+        // DOM Elements
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const encodingSelect = document.getElementById('encoding-select');
+        const statusPanel = document.getElementById('status-panel');
+        const fileNameDisplay = document.getElementById('file-name-display');
+        
+        const statTotal = document.getElementById('stat-total');
+        const statRemoved = document.getElementById('stat-removed');
+        const statCleaned = document.getElementById('stat-cleaned');
+        const columnWarning = document.getElementById('column-warning');
+
+        const tableHead = document.getElementById('table-head');
+        const tableBody = document.getElementById('table-body');
+        const previewCount = document.getElementById('preview-count');
+
+        const downloadCsvBtn = document.getElementById('download-csv-btn');
+        const downloadXlsxBtn = document.getElementById('download-xlsx-btn');
+
+        // Drag and Drop Events
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.classList.add('border-indigo-500', 'bg-indigo-50/50');
+            });
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.classList.remove('border-indigo-500', 'bg-indigo-50/50');
+            });
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        // Re-parse when encoding changes if file exists
+        encodingSelect.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                handleFile(fileInput.files[0]);
+            }
+        });
+
+        // Handle CSV File Processing
+        function handleFile(file) {
+            if (!file.name.toLowerCase().endsWith('.csv')) {
+                showToast('CSV 파일만 업로드할 수 있습니다.', 'error');
+                return;
+            }
+
+            originalFileName = file.name.replace(/\.[^/.]+$/, "");
+            fileNameDisplay.textContent = `파일명: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+
+            const encoding = encodingSelect.value;
+
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: 'greedy',
+                encoding: encoding,
+                complete: function(results) {
+                    if (results.errors.length > 0) {
+                        console.warn('Parsing errors:', results.errors);
+                    }
+                    rawData = results.data;
+                    detectedHeaders = results.meta.fields || [];
+                    processCleansing();
+                },
+                error: function(err) {
+                    showToast('파일을 읽는 도중 오류가 발생했습니다.', 'error');
+                    console.error(err);
+                }
+            });
+        }
+
+        // Clean dataset by filtering out missing 'EMD_NM'
+        function processCleansing() {
+            if (!rawData || rawData.length === 0) {
+                showToast('파일에 데이터가 없습니다.', 'error');
+                return;
+            }
+
+            // Find exact or case-insensitive 'EMD_NM' header key
+            const emdKey = detectedHeaders.find(h => h.trim().toUpperCase() === 'EMD_NM');
+
+            if (!emdKey) {
+                columnWarning.classList.remove('hidden');
+                cleanedData = [...rawData]; // Keep all data if column not found
+                updateStats(rawData.length, 0, cleanedData.length);
+            } else {
+                columnWarning.classList.add('hidden');
+                
+                // Filter rows where EMD_NM is not empty, null, or undefined
+                cleanedData = rawData.filter(row => {
+                    const val = row[emdKey];
+                    if (val === null || val === undefined) return false;
+                    const strVal = String(val).trim();
+                    return strVal !== '' && strVal.toLowerCase() !== 'null' && strVal.toLowerCase() !== 'undefined';
+                });
+
+                const removedCount = rawData.length - cleanedData.length;
+                updateStats(rawData.length, removedCount, cleanedData.length);
+            }
+
+            renderPreviewTable();
+            statusPanel.classList.remove('hidden');
+            showToast('데이터 정제가 완료되었습니다!', 'success');
+        }
+
+        // Update Summary Stats UI
+        function updateStats(total, removed, cleaned) {
+            statTotal.textContent = total.toLocaleString();
+            statRemoved.textContent = removed.toLocaleString();
+            statCleaned.textContent = cleaned.toLocaleString();
+        }
+
+        // Render Preview Table
+        function renderPreviewTable() {
+            tableHead.innerHTML = '';
+            tableBody.innerHTML = '';
+
+            if (detectedHeaders.length === 0 || cleanedData.length === 0) {
+                previewCount.textContent = '표시할 데이터가 없습니다.';
+                return;
+            }
+
+            // Target column highlighting
+            const emdKey = detectedHeaders.find(h => h.trim().toUpperCase() === 'EMD_NM');
+
+            // Render Table Header
+            const headRow = document.createElement('tr');
+            detectedHeaders.forEach(header => {
+                const th = document.createElement('th');
+                th.className = `px-4 py-3 font-semibold whitespace-nowrap border-b border-slate-200 ${header === emdKey ? 'bg-indigo-100 text-indigo-900' : 'bg-slate-100 text-slate-700'}`;
+                th.textContent = header;
+                headRow.appendChild(th);
+            });
+            tableHead.appendChild(headRow);
+
+            // Render Table Rows (Limit to 100 preview rows for UI performance)
+            const previewLimit = Math.min(cleanedData.length, 100);
+            previewCount.textContent = `${previewLimit.toLocaleString()} / ${cleanedData.length.toLocaleString()} 건 표시 중`;
+
+            for (let i = 0; i < previewLimit; i++) {
+                const rowData = cleanedData[i];
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50 transition-colors duration-100';
+
+                detectedHeaders.forEach(header => {
+                    const td = document.createElement('td');
+                    td.className = `px-4 py-2.5 whitespace-nowrap text-slate-600 ${header === emdKey ? 'bg-indigo-50/30 font-medium text-slate-900' : ''}`;
+                    td.textContent = rowData[header] !== undefined ? rowData[header] : '';
+                    tr.appendChild(td);
+                });
+
+                tableBody.appendChild(tr);
+            }
+        }
+
+        // Download as CSV
+        downloadCsvBtn.addEventListener('click', () => {
+            if (cleanedData.length === 0) {
+                showToast('저장할 데이터가 없습니다.', 'error');
+                return;
+            }
+
+            const csvString = Papa.unparse(cleanedData);
+            // Include UTF-8 BOM for Microsoft Excel Korean compatibility
+            const blob = new Blob(["\ufeff" + csvString], { type: 'text/csv;charset=utf-8;' });
+            
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `${originalFileName}_EMD_NM_정제.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+
+            showToast('CSV 파일이 저장되었습니다.', 'success');
+        });
+
+        // Download as XLSX
+        downloadXlsxBtn.addEventListener('click', () => {
+            if (cleanedData.length === 0) {
+                showToast('저장할 데이터가 없습니다.', 'error');
+                return;
+            }
+
+            // Create XLSX Workbook using SheetJS
+            const worksheet = XLSX.utils.json_to_sheet(cleanedData, { header: detectedHeaders });
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, " 정제데이터");
+
+            // Save File
+            XLSX.writeFile(workbook, `${originalFileName}_EMD_NM_정제.xlsx`);
+
+            showToast('XLSX 파일이 저장되었습니다.', 'success');
+        });
+
+        // Toast Notification Helper
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toast-message');
+            const toastIcon = document.getElementById('toast-icon');
+
+            toastMessage.textContent = message;
+
+            if (type === 'success') {
+                toastIcon.className = 'fa-solid fa-circle-check text-emerald-400';
+            } else if (type === 'error') {
+                toastIcon.className = 'fa-solid fa-circle-xmark text-rose-400';
+            } else {
+                toastIcon.className = 'fa-solid fa-circle-info text-sky-400';
+            }
+
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            toast.classList.add('translate-y-0', 'opacity-100');
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-0', 'opacity-100');
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
